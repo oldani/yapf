@@ -7,11 +7,13 @@ pub struct LoadBalancer<T> {
 }
 
 impl<T: Strategy> LoadBalancer<T> {
-    pub fn new(strategy: T) -> Self {
-        Self {
-            strategy,
-            backends: Vec::new(),
-        }
+    pub fn new(backends: Vec<Backend>) -> Self {
+        let strategy = T::build(&backends);
+        Self { strategy, backends }
+    }
+
+    pub fn next(&self) -> Option<&Backend> {
+        self.strategy.get_next()
     }
 }
 
@@ -29,5 +31,26 @@ impl Backend {
     pub fn with_weight(mut self, weight: u16) -> Self {
         self.weight = weight;
         self
+    }
+}
+
+mod tests {
+    use super::*;
+    use strategy::RoundRobin;
+
+    #[test]
+    fn test_lb_round_robin() {
+        let backends = vec![
+            Backend::new("1.0.0.1".to_string()),
+            Backend::new("1.0.0.2".to_string()),
+            Backend::new("1.0.0.3".to_string()),
+        ];
+        let lb: LoadBalancer<RoundRobin> = LoadBalancer::new(backends);
+        assert_eq!(lb.next().unwrap().addr, "1.0.0.1");
+        assert_eq!(lb.next().unwrap().addr, "1.0.0.2");
+        assert_eq!(lb.next().unwrap().addr, "1.0.0.3");
+        assert_eq!(lb.next().unwrap().addr, "1.0.0.1");
+        assert_eq!(lb.next().unwrap().addr, "1.0.0.2");
+        assert_eq!(lb.next().unwrap().addr, "1.0.0.3");
     }
 }
