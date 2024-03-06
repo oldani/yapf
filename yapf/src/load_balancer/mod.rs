@@ -1,3 +1,4 @@
+mod helthcheck;
 mod strategy;
 use strategy::Strategy;
 
@@ -34,6 +35,7 @@ impl Backend {
     }
 }
 
+#[cfg(test)]
 mod tests {
     use super::*;
     use strategy::RoundRobin;

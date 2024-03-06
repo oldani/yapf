@@ -139,6 +139,7 @@ impl Strategy for WeightedRandom {
     }
 }
 
+#[cfg(test)]
 mod tests {
     use std::collections::HashMap;
 
