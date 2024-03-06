@@ -1,3 +1,4 @@
+mod load_balancer;
 mod proxy_trait;
 use proxy_trait::HttpProxy;
 
