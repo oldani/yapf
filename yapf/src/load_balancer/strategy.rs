@@ -1,6 +1,7 @@
-use std::sync::atomic::{AtomicUsize, Ordering};
-
 use super::Backend;
+use rand::prelude::*;
+use rand_distr::WeightedAliasIndex;
+use std::sync::atomic::{AtomicUsize, Ordering};
 
 pub trait Strategy {
     fn build(backends: &[Backend]) -> Self;
@@ -114,7 +115,33 @@ impl Strategy for WeightedRoundRobin {
     }
 }
 
+pub struct WeightedRandom {
+    backends: Vec<Backend>,
+    weights: WeightedAliasIndex<u16>,
+}
+
+impl Strategy for WeightedRandom {
+    fn build(backends: &[Backend]) -> Self {
+        let weights = backends.iter().map(|b| b.weight).collect();
+        Self {
+            backends: backends.to_vec(),
+            weights: WeightedAliasIndex::new(weights).unwrap(),
+        }
+    }
+
+    fn get_next(&self) -> Option<&Backend> {
+        if self.backends.is_empty() {
+            return None;
+        }
+
+        let idx = self.weights.sample(&mut rand::thread_rng());
+        Some(&self.backends[idx])
+    }
+}
+
 mod tests {
+    use std::collections::HashMap;
+
     use super::*;
 
     #[test]
@@ -229,5 +256,23 @@ mod tests {
         assert_eq!(strategy.get_next().unwrap().addr, "1.0.0.1");
         assert_eq!(strategy.get_next().unwrap().addr, "1.0.0.2");
         assert_eq!(strategy.get_next().unwrap().addr, "1.0.0.3");
+    }
+
+    #[test]
+    fn test_weighted_random() {
+        let backends = vec![
+            Backend::new("1.0.0.1".to_string()),
+            Backend::new("1.0.0.2".to_string()),
+            Backend::new("1.0.0.3".to_string()).with_weight(200),
+        ];
+        let strategy = WeightedRandom::build(&backends);
+        let mut count: HashMap<String, u8> = HashMap::new();
+        for _ in 0..=100 {
+            let backend = strategy.get_next().unwrap();
+            *count.entry(backend.addr.clone()).or_insert(0) += 1;
+        }
+        assert!((15..=35).contains(count.get("1.0.0.1").unwrap())); // 25% chance
+        assert!((15..=35).contains(count.get("1.0.0.2").unwrap())); // 25% chance
+        assert!((40..=60).contains(count.get("1.0.0.3").unwrap())); // 50% chance
     }
 }
