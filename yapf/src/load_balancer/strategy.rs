@@ -1,35 +1,36 @@
+use std::sync::atomic::{AtomicUsize, Ordering};
+
 use super::Backend;
 
 pub trait Strategy {
     fn build(backends: &[Backend]) -> Self;
-    fn get_next(&mut self) -> Option<&Backend>;
+    fn get_next(&self) -> Option<&Backend>;
 }
 
-struct RoundRobin {
+pub struct RoundRobin {
     backends: Vec<Backend>,
-    current: usize,
+    current: AtomicUsize,
 }
 
 impl Strategy for RoundRobin {
     fn build(backends: &[Backend]) -> Self {
         Self {
             backends: backends.to_vec(),
-            current: 0,
+            current: AtomicUsize::new(0),
         }
     }
 
-    fn get_next(&mut self) -> Option<&Backend> {
+    fn get_next(&self) -> Option<&Backend> {
         if self.backends.is_empty() {
             return None;
         }
 
-        let next = &self.backends[self.current];
-        self.current = (self.current + 1) % self.backends.len();
-        Some(next)
+        let idx = self.current.fetch_add(1, Ordering::Relaxed);
+        Some(&self.backends[idx % self.backends.len()])
     }
 }
 
-struct Random {
+pub struct Random {
     backends: Vec<Backend>,
 }
 
@@ -40,7 +41,7 @@ impl Strategy for Random {
         }
     }
 
-    fn get_next(&mut self) -> Option<&Backend> {
+    fn get_next(&self) -> Option<&Backend> {
         if self.backends.is_empty() {
             return None;
         }
@@ -50,52 +51,66 @@ impl Strategy for Random {
     }
 }
 
-struct WeightedRoundRobin {
+pub struct WeightedRoundRobin {
     backends: Vec<Backend>,
-    weights: Vec<u16>,
-    max_weight: u16,
-    current_index: usize,
-    current_weight: u16,
-    gcd: u16,
+    weighted: Vec<usize>,
+    current_index: AtomicUsize,
+}
+
+impl WeightedRoundRobin {
+    fn compute_weighted(backends: &[Backend]) -> Vec<usize> {
+        let mut weights = Vec::new();
+        let mut max_weight = 0;
+        let mut gcd = 0;
+        for backend in backends {
+            weights.push(backend.weight);
+            max_weight = max_weight.max(backend.weight);
+            gcd = num_integer::gcd(gcd, backend.weight);
+        }
+
+        if weights.iter().all(|&x| x == max_weight) {
+            return (0..backends.len()).collect();
+        }
+
+        // Precompute evenly weighted backends, so they're not computed every time
+        // Also we distribute the gcd evenly across the backends
+        let mut current_index = 0;
+        let mut current_weight: u16 = max_weight;
+        let mut weighted = Vec::new();
+        loop {
+            current_index = (current_index + 1) % backends.len();
+            if current_index == 0 {
+                current_weight = current_weight.saturating_sub(gcd);
+                if current_weight == 0 {
+                    break;
+                }
+            }
+
+            if weights[current_index] >= current_weight {
+                weighted.push(current_index);
+            }
+        }
+        weighted
+    }
 }
 
 impl Strategy for WeightedRoundRobin {
     fn build(backends: &[Backend]) -> Self {
-        let weights = backends.iter().map(|b| b.weight).collect::<Vec<_>>();
-        let max_weight = *weights.iter().max().unwrap();
-
-        let gcd = weights
-            .iter()
-            .fold(weights[0], |acc, &x| num_integer::gcd(acc, x));
+        let weighted = Self::compute_weighted(backends);
 
         Self {
             backends: backends.to_vec(),
-            weights,
-            max_weight: max_weight,
-            current_index: 0,
-            current_weight: 0,
-            gcd,
+            weighted,
+            current_index: AtomicUsize::new(0),
         }
     }
 
-    fn get_next(&mut self) -> Option<&Backend> {
+    fn get_next(&self) -> Option<&Backend> {
         if self.backends.is_empty() {
             return None;
         }
-
-        loop {
-            self.current_index = (self.current_index + 1) % self.backends.len();
-            if self.current_index == 0 {
-                self.current_weight = self.current_weight.saturating_sub(self.gcd);
-                if self.current_weight == 0 {
-                    self.current_weight = self.max_weight;
-                }
-            }
-
-            if self.weights[self.current_index] >= self.current_weight {
-                return Some(&self.backends[self.current_index]);
-            }
-        }
+        let index = self.current_index.fetch_add(1, Ordering::Relaxed);
+        Some(&self.backends[self.weighted[index % self.weighted.len()]])
     }
 }
 
@@ -109,7 +124,7 @@ mod tests {
             Backend::new("1.0.0.2".to_string()),
             Backend::new("1.0.0.3".to_string()),
         ];
-        let mut strategy = RoundRobin::build(&backends);
+        let strategy = RoundRobin::build(&backends);
         assert_eq!(strategy.get_next().unwrap().addr, "1.0.0.1");
         assert_eq!(strategy.get_next().unwrap().addr, "1.0.0.2");
         assert_eq!(strategy.get_next().unwrap().addr, "1.0.0.3");
@@ -125,7 +140,7 @@ mod tests {
             Backend::new("1.0.0.2".to_string()),
             Backend::new("1.0.0.3".to_string()),
         ];
-        let mut strategy = Random::build(&backends);
+        let strategy = Random::build(&backends);
         let mut seen = [false; 3];
         for _ in 0..100 {
             let backend = strategy.get_next().unwrap();
@@ -142,17 +157,62 @@ mod tests {
     #[test]
     fn test_weighted_round_robin() {
         let backends = vec![
-            Backend::new("1.0.0.2".to_string()).with_weight(200),
             Backend::new("1.0.0.1".to_string()),
+            Backend::new("1.0.0.2".to_string()),
+            Backend::new("1.0.0.3".to_string()).with_weight(200),
+        ];
+        let strategy = WeightedRoundRobin::build(&backends);
+        assert_eq!(strategy.get_next().unwrap().addr, "1.0.0.3");
+        assert_eq!(strategy.get_next().unwrap().addr, "1.0.0.1");
+        assert_eq!(strategy.get_next().unwrap().addr, "1.0.0.2");
+        assert_eq!(strategy.get_next().unwrap().addr, "1.0.0.3");
+        //
+        assert_eq!(strategy.get_next().unwrap().addr, "1.0.0.3");
+        assert_eq!(strategy.get_next().unwrap().addr, "1.0.0.1");
+        assert_eq!(strategy.get_next().unwrap().addr, "1.0.0.2");
+        assert_eq!(strategy.get_next().unwrap().addr, "1.0.0.3");
+
+        let backends = vec![
+            Backend::new("1.0.0.1".to_string()),
+            Backend::new("1.0.0.2".to_string()).with_weight(200),
             Backend::new("1.0.0.3".to_string()).with_weight(300),
         ];
-        let mut strategy = WeightedRoundRobin::build(&backends);
+        let strategy = WeightedRoundRobin::build(&backends);
+        assert_eq!(strategy.get_next().unwrap().addr, "1.0.0.3");
+        assert_eq!(strategy.get_next().unwrap().addr, "1.0.0.2");
+        assert_eq!(strategy.get_next().unwrap().addr, "1.0.0.3");
         assert_eq!(strategy.get_next().unwrap().addr, "1.0.0.1");
-        assert_eq!(strategy.get_next().unwrap().addr, "1.0.0.3");
-        assert_eq!(strategy.get_next().unwrap().addr, "1.0.0.3");
         assert_eq!(strategy.get_next().unwrap().addr, "1.0.0.2");
         assert_eq!(strategy.get_next().unwrap().addr, "1.0.0.3");
+
+        let backends = vec![
+            Backend::new("1.0.0.1".to_string()),
+            Backend::new("1.0.0.2".to_string()).with_weight(400),
+        ];
+        let strategy = WeightedRoundRobin::build(&backends);
         assert_eq!(strategy.get_next().unwrap().addr, "1.0.0.2");
+        assert_eq!(strategy.get_next().unwrap().addr, "1.0.0.2");
+        assert_eq!(strategy.get_next().unwrap().addr, "1.0.0.2");
+        assert_eq!(strategy.get_next().unwrap().addr, "1.0.0.1");
+        assert_eq!(strategy.get_next().unwrap().addr, "1.0.0.2");
+
+        let backends = vec![
+            Backend::new("1.0.0.1".to_string()),
+            Backend::new("1.0.0.2".to_string()),
+            Backend::new("1.0.0.3".to_string()).with_weight(150),
+            Backend::new("1.0.0.4".to_string()).with_weight(150),
+        ];
+        let strategy = WeightedRoundRobin::build(&backends);
+        assert_eq!(strategy.get_next().unwrap().addr, "1.0.0.3");
+        assert_eq!(strategy.get_next().unwrap().addr, "1.0.0.4");
+        assert_eq!(strategy.get_next().unwrap().addr, "1.0.0.1");
+        assert_eq!(strategy.get_next().unwrap().addr, "1.0.0.2");
+        assert_eq!(strategy.get_next().unwrap().addr, "1.0.0.3");
+        assert_eq!(strategy.get_next().unwrap().addr, "1.0.0.4");
+        assert_eq!(strategy.get_next().unwrap().addr, "1.0.0.1");
+        assert_eq!(strategy.get_next().unwrap().addr, "1.0.0.2");
+        assert_eq!(strategy.get_next().unwrap().addr, "1.0.0.3");
+        assert_eq!(strategy.get_next().unwrap().addr, "1.0.0.4");
     }
 
     #[test]
@@ -162,12 +222,12 @@ mod tests {
             Backend::new("1.0.0.2".to_string()),
             Backend::new("1.0.0.3".to_string()),
         ];
-        let mut strategy = WeightedRoundRobin::build(&backends);
-        assert_eq!(strategy.get_next().unwrap().addr, "1.0.0.2");
-        assert_eq!(strategy.get_next().unwrap().addr, "1.0.0.3");
+        let strategy = WeightedRoundRobin::build(&backends);
         assert_eq!(strategy.get_next().unwrap().addr, "1.0.0.1");
         assert_eq!(strategy.get_next().unwrap().addr, "1.0.0.2");
         assert_eq!(strategy.get_next().unwrap().addr, "1.0.0.3");
         assert_eq!(strategy.get_next().unwrap().addr, "1.0.0.1");
+        assert_eq!(strategy.get_next().unwrap().addr, "1.0.0.2");
+        assert_eq!(strategy.get_next().unwrap().addr, "1.0.0.3");
     }
 }
