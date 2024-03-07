@@ -19,6 +19,10 @@ anyhow = "1.0.40"
 reqwest = { version = "0.11.3", features = ["default-tls", "trust-dns"] }
 tokio = { version = "1.0.1", features = ["full"] }
 arc-swap = "1.7.0"
+pingora-server = { path = "../pingora-server", optional = true }
 
 [dev-dependencies]
 wiremock = "0.6.0"
+
+[features]
+pingora = ["dep:pingora-server"]
