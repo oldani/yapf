@@ -124,8 +124,20 @@ impl<T: Strategy> LoadBalancer<T> {
         self.backends.run_health_check().await;
     }
 
+    pub fn select_with(&self, max_iterations: u16) -> Option<&Backend> {
+        for _ in 0..max_iterations {
+            let Some(backend) = self.strategy.get_next() else {
+                return None;
+            };
+            if self.backends.is_healthy(backend) {
+                return Some(backend);
+            }
+        }
+        None
+    }
+
     pub fn next(&self) -> Option<&Backend> {
-        self.strategy.get_next()
+        self.select_with(self.backends.backends.len() as u16)
     }
 }
 
@@ -214,5 +226,58 @@ mod tests {
         backends.run_health_check().await;
         // backend1 should be unhealthy due 404
         assert!(!backends.is_healthy(&backend1));
+    }
+
+    #[tokio::test]
+    async fn test_lb_with_health_check() {
+        let backend_server1 = MockServer::start().await;
+        let backend_server2 = MockServer::start().await;
+
+        let backend1 = Backend::new(backend_server1.uri());
+        let backend2 = Backend::new(format!("{}/backend2", backend_server2.uri()));
+
+        let mut lb: LoadBalancer<RoundRobin> =
+            LoadBalancer::new(vec![backend1.clone(), backend2.clone()]);
+        let health_checker = HttpHealthCheck::new();
+        lb.set_health_check(Box::new(health_checker));
+
+        // Backends are healthy by default since we haven't run health check yet
+        assert_eq!(lb.next().unwrap(), &backend1);
+        assert_eq!(lb.next().unwrap(), &backend2);
+
+        Mock::given(method("GET"))
+            .and(path("/"))
+            .respond_with(ResponseTemplate::new(200))
+            .up_to_n_times(2)
+            .mount(&backend_server1)
+            .await;
+
+        Mock::given(method("GET"))
+            .and(path("/backend2"))
+            .respond_with(ResponseTemplate::new(200))
+            .up_to_n_times(1)
+            .mount(&backend_server2)
+            .await;
+
+        lb.run_health_check().await;
+        // Still should be healthy
+        assert_eq!(lb.next().unwrap(), &backend1);
+        assert_eq!(lb.next().unwrap(), &backend2);
+
+        Mock::given(method("POST"))
+            .and(path("/backend2"))
+            .respond_with(ResponseTemplate::new(401))
+            .up_to_n_times(1)
+            .mount(&backend_server2)
+            .await;
+
+        lb.run_health_check().await;
+        // backend2 should be unhealthy and should only return backend1
+        assert_eq!(lb.next().unwrap(), &backend1);
+        assert_eq!(lb.next().unwrap(), &backend1);
+
+        lb.run_health_check().await;
+        // All backends are unhealthy
+        assert!(lb.next().is_none());
     }
 }
