@@ -1,12 +1,14 @@
+#[cfg(feature = "pingora")]
+use std::time::Duration;
 use std::{
     collections::{hash_map::DefaultHasher, HashMap},
     hash::{Hash, Hasher},
     sync::Arc,
-    time::Duration,
 };
 
 use arc_swap::ArcSwap;
 
+mod background;
 pub mod helthcheck;
 pub mod strategy;
 
@@ -37,7 +39,7 @@ impl Backend {
 }
 
 struct Backends {
-    health_check: Option<Box<dyn HealthCheck>>,
+    health_check: Option<Box<dyn HealthCheck + Send + Sync + 'static>>,
     backends: Vec<Backend>,
     health: ArcSwap<HashMap<u64, Health>>,
 }
@@ -56,7 +58,7 @@ impl Backends {
         }
     }
 
-    fn set_health_check(&mut self, health_check: Box<dyn HealthCheck>) {
+    fn set_health_check(&mut self, health_check: Box<dyn HealthCheck + Send + Sync + 'static>) {
         self.health_check = Some(health_check);
     }
 
@@ -73,7 +75,7 @@ impl Backends {
 
     async fn check_and_report(
         backend: &Backend,
-        health_check: &Box<dyn HealthCheck>,
+        health_check: &Box<dyn HealthCheck + Send + Sync + 'static>,
         health_table: &HashMap<u64, Health>,
     ) {
         let failed = health_check.check(backend).await.err();
@@ -103,6 +105,7 @@ impl Backends {
 pub struct LoadBalancer<T> {
     strategy: T,
     backends: Backends,
+    #[cfg(feature = "pingora")]
     health_check_interval: Option<Duration>,
 }
 
@@ -112,11 +115,12 @@ impl<T: Strategy> LoadBalancer<T> {
         Self {
             strategy,
             backends: Backends::new(backends),
+            #[cfg(feature = "pingora")]
             health_check_interval: None,
         }
     }
 
-    pub fn set_health_check(&mut self, health_check: Box<dyn HealthCheck>) {
+    pub fn set_health_check(&mut self, health_check: Box<dyn HealthCheck + Send + Sync + 'static>) {
         self.backends.set_health_check(health_check);
     }
 
