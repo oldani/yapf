@@ -1,14 +1,18 @@
+use std::sync::Arc;
 use std::time::Duration;
 
-use super::Backend;
 use anyhow::Result;
-
+use arc_swap::ArcSwap;
+use async_trait::async_trait;
 use reqwest::{
     header::{HeaderMap, HeaderName, HeaderValue},
     ClientBuilder, Method, Url,
 };
 
+use super::Backend;
+
 /// [HealthCheck] is the interface to implement health check for backends
+#[async_trait]
 pub trait HealthCheck {
     /// Check the given backend.
     ///
@@ -21,7 +25,7 @@ pub trait HealthCheck {
     fn health_threshold(&self, success: bool) -> usize;
 }
 
-struct HttpHealthCheck<'a> {
+pub struct HttpHealthCheck<'a> {
     client: reqwest::Client,
     method: Method,
     path: Option<&'a str>,
@@ -30,7 +34,7 @@ struct HttpHealthCheck<'a> {
 }
 
 impl HttpHealthCheck<'_> {
-    fn new() -> Self {
+    pub fn new() -> Self {
         // TODO: make this configurable
         let client = ClientBuilder::new()
             .timeout(Duration::from_secs(30))
@@ -41,33 +45,30 @@ impl HttpHealthCheck<'_> {
         Self {
             client,
             method: Method::GET,
-            path: Some("/"),
+            path: None,
             body: None,
             headers: HeaderMap::new(),
         }
     }
 
-    fn set_method(mut self, method: Method) -> Self {
+    pub fn set_method(&mut self, method: Method) {
         self.method = method;
-        self
     }
 
-    fn set_path(mut self, path: &'static str) -> Self {
+    pub fn set_path(&mut self, path: &'static str) {
         self.path = Some(path);
-        self
     }
 
-    fn set_header(mut self, key: HeaderName, value: HeaderValue) -> Self {
+    pub fn set_header(&mut self, key: HeaderName, value: HeaderValue) {
         self.headers.insert(key, value);
-        self
     }
 
-    fn set_body(mut self, body: String) -> Self {
+    pub fn set_body(&mut self, body: String) {
         self.body = Some(body);
-        self
     }
 }
 
+#[async_trait]
 impl HealthCheck for HttpHealthCheck<'_> {
     async fn check(&self, target: &Backend) -> Result<()> {
         // Build a new request with the target address
@@ -97,14 +98,64 @@ impl HealthCheck for HttpHealthCheck<'_> {
     }
 
     fn health_threshold(&self, _success: bool) -> usize {
-        2
+        1
     }
 }
 
-struct HealthInner;
+#[derive(Clone)]
+struct HealthInner {
+    /// Whether the endpoint is healthy to serve traffic
+    healthy: bool,
+    /// The number of consecutive checks that have failed
+    /// If this number reaches the threshold, the health status will be flipped
+    /// from healthy to unhealthy or vice versa
+    /// This is used to prevent flapping
+    /// If the health status is flipped, the number of failed checks will be reset to 0
+    /// If the health status is not flipped, the number of failed checks will be incremented
+    /// by 1
+    health_counter: usize,
+}
 
-struct Health {
-    inner: HealthInner,
+pub struct Health(ArcSwap<HealthInner>);
+
+impl Default for Health {
+    fn default() -> Self {
+        Self(ArcSwap::new(Arc::new(HealthInner {
+            healthy: true,
+            health_counter: 0,
+        })))
+    }
+}
+
+impl Health {
+    pub fn healthy(&self) -> bool {
+        self.0.load().healthy
+    }
+
+    // Returns true if the health status is flipped
+    pub fn observe_health(&self, healthy: bool, flip_threshold: usize) -> bool {
+        let health = self.0.load();
+        let mut flipped = false;
+        if health.healthy != healthy {
+            // opposite health observed, ready to increase the counter
+            // clone the inner
+            let mut new_health = (**health).clone();
+            new_health.health_counter += 1;
+            if new_health.health_counter >= flip_threshold {
+                new_health.healthy = healthy;
+                new_health.health_counter = 0;
+                flipped = true;
+            }
+            self.0.store(Arc::new(new_health));
+        } else if health.health_counter > 0 {
+            // observing the same health as the current state.
+            // reset the counter, if it is non-zero, because it is no longer consecutive
+            let mut new_health = (**health).clone();
+            new_health.health_counter = 0;
+            self.0.store(Arc::new(new_health));
+        }
+        flipped
+    }
 }
 
 #[cfg(test)]
@@ -158,13 +209,13 @@ mod tests {
         let backend = Backend::new(server.uri().to_string());
         let mut health_check = HttpHealthCheck::new();
 
-        health_check = health_check.set_method(Method::POST);
-        health_check = health_check.set_path("/health");
-        health_check = health_check.set_header(
+        health_check.set_method(Method::POST);
+        health_check.set_path("/health");
+        health_check.set_header(
             reqwest::header::CONTENT_TYPE,
             reqwest::header::HeaderValue::from_static("application/json"),
         );
-        health_check = health_check.set_body(json.to_string());
+        health_check.set_body(json.to_string());
 
         Mock::given(method("POST"))
             .and(path("/health"))
