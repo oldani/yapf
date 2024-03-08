@@ -1,6 +1,6 @@
 use async_trait::async_trait;
-#[cfg(feature = "pingora")]
-use pingora_server::{server::ShutdownWatch, services::background::BackgroundService};
+#[cfg(feature = "pingora-core")]
+use pingora_core::{server::ShutdownWatch, services::background::BackgroundService};
 use tokio::time::{self, Duration, Instant};
 
 use super::{LoadBalancer, Strategy};
@@ -35,14 +35,14 @@ impl<T: Strategy + Send + Sync + 'static> BackgroundService for LoadBalancer<T> 
 }
 
 #[cfg(test)]
-#[cfg(feature = "pingora")]
+#[cfg(feature = "pingora-core")]
 mod tests {
     use super::*;
     use crate::load_balancer::{
         helthcheck::HttpHealthCheck, strategy::RoundRobin, Backend, LoadBalancer,
     };
 
-    use pingora_server::services::{background::background_service, Service};
+    use pingora_core::services::{background::background_service, Service};
     use tokio::sync::watch;
     use wiremock::{
         matchers::{method, path},
