@@ -161,6 +161,7 @@ impl Health {
 #[cfg(test)]
 mod tests {
     use super::*;
+    use wiremock::http::HeaderName;
     use wiremock::matchers::{header, method, path};
     use wiremock::{Mock, MockServer, ResponseTemplate};
 
@@ -219,7 +220,10 @@ mod tests {
 
         Mock::given(method("POST"))
             .and(path("/health"))
-            .and(header(http::header::CONTENT_TYPE, "application/json"))
+            .and(header(
+                HeaderName::from_static("content-type"),
+                "application/json",
+            ))
             .and(wiremock::matchers::body_json_string(json))
             .respond_with(ResponseTemplate::new(200))
             .up_to_n_times(1)
