@@ -1,4 +1,4 @@
-#[cfg(feature = "pingora")]
+#[cfg(feature = "pingora-core")]
 use std::time::Duration;
 use std::{
     collections::{hash_map::DefaultHasher, HashMap},
@@ -7,6 +7,8 @@ use std::{
 };
 
 use arc_swap::ArcSwap;
+use http::uri::InvalidUri;
+use hyper::Uri;
 
 mod background;
 pub mod helthcheck;
@@ -105,7 +107,7 @@ impl Backends {
 pub struct LoadBalancer<T> {
     strategy: T,
     backends: Backends,
-    #[cfg(feature = "pingora")]
+    #[cfg(feature = "pingora-core")]
     health_check_interval: Option<Duration>,
 }
 
@@ -115,9 +117,20 @@ impl<T: Strategy> LoadBalancer<T> {
         Self {
             strategy,
             backends: Backends::new(backends),
-            #[cfg(feature = "pingora")]
+            #[cfg(feature = "pingora-core")]
             health_check_interval: None,
         }
+    }
+
+    pub fn try_from_vec(backends: &[&str]) -> Result<Self, http::uri::InvalidUri> {
+        let new_backends: Result<Vec<Backend>, InvalidUri> = backends
+            .iter()
+            .map(|addr| {
+                let uri = addr.parse::<Uri>()?;
+                Ok(Backend::new(uri.to_string()))
+            })
+            .collect();
+        Ok(Self::new(new_backends?))
     }
 
     pub fn set_health_check(&mut self, health_check: Box<dyn HealthCheck + Send + Sync + 'static>) {
@@ -156,12 +169,8 @@ mod tests {
 
     #[test]
     fn test_lb_round_robin() {
-        let backends = vec![
-            Backend::new("1.0.0.1".to_string()),
-            Backend::new("1.0.0.2".to_string()),
-            Backend::new("1.0.0.3".to_string()),
-        ];
-        let lb: LoadBalancer<RoundRobin> = LoadBalancer::new(backends);
+        let backends = vec!["1.0.0.1", "1.0.0.2", "1.0.0.3"];
+        let lb: LoadBalancer<RoundRobin> = LoadBalancer::try_from_vec(&backends).unwrap();
         assert_eq!(lb.next().unwrap().addr, "1.0.0.1");
         assert_eq!(lb.next().unwrap().addr, "1.0.0.2");
         assert_eq!(lb.next().unwrap().addr, "1.0.0.3");
