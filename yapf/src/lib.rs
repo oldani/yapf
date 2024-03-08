@@ -1,20 +1,14 @@
 pub mod load_balancer;
-mod proxy_trait;
-use proxy_trait::HttpProxy;
+pub mod proxy;
+pub mod proxy_trait;
+pub mod services;
 
-pub struct Proxy<P: HttpProxy> {
-    // pub name: String,
-    // pub address: String,
-    // pub port: u16,
-    // pub tls: bool,
-    pub http_proxy: P,
-}
+#[cfg(feature = "pingora-core")]
+pub use proxy::http_proxy_service;
+pub use proxy_trait::{Proxy, RequestHeaders, ResponseHeaders};
 
-impl<P: HttpProxy> Proxy<P> {
-    pub fn new(http_proxy: P) -> Self {
-        Self { http_proxy }
-    }
-}
-
-struct Upstream;
-// struct Downstream;
+#[cfg(feature = "pingora-core")]
+pub use pingora_core::{
+    server::{configuration::Opt, Server},
+    services::background::background_service,
+};
