@@ -1,4 +1,3 @@
-#[cfg(feature = "pingora-core")]
 use std::time::Duration;
 use std::{
     collections::{hash_map::DefaultHasher, HashMap},
@@ -41,7 +40,7 @@ impl Backend {
 }
 
 struct Backends {
-    health_check: Option<Box<dyn HealthCheck + Send + Sync + 'static>>,
+    health_check: Option<Arc<dyn HealthCheck + Send + Sync + 'static>>,
     backends: Vec<Backend>,
     health: ArcSwap<HashMap<u64, Health>>,
 }
@@ -61,7 +60,7 @@ impl Backends {
     }
 
     fn set_health_check(&mut self, health_check: Box<dyn HealthCheck + Send + Sync + 'static>) {
-        self.health_check = Some(health_check);
+        self.health_check = Some(health_check.into());
     }
 
     async fn run_health_check(&self) {
@@ -77,7 +76,7 @@ impl Backends {
 
     async fn check_and_report(
         backend: &Backend,
-        health_check: &Box<dyn HealthCheck + Send + Sync + 'static>,
+        health_check: &Arc<dyn HealthCheck + Send + Sync + 'static>,
         health_table: &HashMap<u64, Health>,
     ) {
         let failed = health_check.check(backend).await.err();
@@ -107,7 +106,6 @@ impl Backends {
 pub struct LoadBalancer<T> {
     strategy: T,
     backends: Backends,
-    #[cfg(feature = "pingora-core")]
     health_check_interval: Option<Duration>,
 }
 
@@ -117,7 +115,6 @@ impl<T: Strategy> LoadBalancer<T> {
         Self {
             strategy,
             backends: Backends::new(backends),
-            #[cfg(feature = "pingora-core")]
             health_check_interval: None,
         }
     }
