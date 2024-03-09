@@ -1,9 +1,12 @@
 use async_trait::async_trait;
 use hyper::body::Body;
-use hyper::{http::request::Parts, Response, Uri};
+use hyper::{
+    http::{request, response},
+    Response, Uri,
+};
 
-pub type RequestHeaders = Parts;
-pub type ResponseHeaders = Parts;
+pub type RequestHeaders = request::Parts;
+pub type ResponseHeaders = response::Parts;
 
 #[async_trait]
 pub trait Proxy {
@@ -34,11 +37,25 @@ pub trait Proxy {
     /// This is the last chance to modify the request before it is sent to the upstream.
     async fn upstream_request_filter(&self, _request: &mut RequestHeaders, _ctx: &mut Self::CTX) {}
 
+    /// This filter is called when there is an error in the process of establishing a connection
+    /// to the upstream.
+    ///
+    /// Users can return a response to be sent to the downstream or a 500 error will be sent by default.
+    fn fail_to_connect(
+        &self,
+        // _request: &RequestHeaders,  TODO: Figure how to clone this
+        _ctx: &mut Self::CTX,
+        _upstream_addr: &Uri,
+        _error: hyper::Error,
+    ) -> Option<Response<Body>> {
+        None
+    }
+
     /// Modify the response header before it is send to the downstream
     ///
     async fn response_filter(
         &self,
-        _upstream_response: ResponseHeaders,
+        _upstream_response: &mut ResponseHeaders,
         _ctx: &mut Self::CTX,
     ) -> Result<(), Response<Body>> {
         Ok(())
