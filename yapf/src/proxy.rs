@@ -127,3 +127,12 @@ where
         ProxyService::new(inner),
     )
 }
+
+#[cfg(not(feature = "pingora-core"))]
+pub fn http_proxy_service<P>(_inner: P)
+where
+    P: ProxyTrait + Send + Sync + 'static,
+    <P as ProxyTrait>::CTX: Send + Sync,
+{
+    unimplemented!("http_proxy_service is only available with the pingora-core feature")
+}
