@@ -3,7 +3,6 @@ pub mod proxy;
 pub mod proxy_trait;
 pub mod services;
 
-#[cfg(feature = "pingora-core")]
 pub use proxy::http_proxy_service;
 pub use proxy_trait::{Proxy, RequestHeaders, ResponseHeaders};
 
