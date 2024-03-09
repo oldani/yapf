@@ -53,13 +53,14 @@ where
     // TODO: Request body filter? How do we make it opt in? So we dont alwasy have to read the body
 
     // Get the upstream address
-    let Some(upstreams_uri) = proxy.inner.upstream_addr(&parts, &mut ctx).await else {
+    let Some(upstream_addr) = proxy.inner.upstream_addr(&parts, &mut ctx).await else {
         return Ok(Response::builder()
             .status(StatusCode::SERVICE_UNAVAILABLE)
             .body(Body::empty())
             .unwrap());
     };
-    parts.uri = upstreams_uri;
+    let upstream_addr_clone = upstream_addr.clone();
+    parts.uri = upstream_addr;
 
     // Allow the user to modify the request before sending it to the upstream
     proxy
@@ -72,16 +73,32 @@ where
     let request = Request::from_parts(parts, body);
 
     // Proxy the request to the upstream
-    let Ok(upstream_response) = proxy.upstream.request(request).await else {
-        // TODO: Upstream error hook
-        return Ok(Response::builder()
-            .status(StatusCode::INTERNAL_SERVER_ERROR)
-            .body(Body::empty())
-            .unwrap());
+    let upstream_response = match proxy.upstream.request(request).await {
+        Ok(upstream_response) => upstream_response,
+        Err(err) => {
+            match proxy
+                .inner
+                .fail_to_connect(&mut ctx, &upstream_addr_clone, err)
+            {
+                Some(response) => return Ok(response),
+                None => {
+                    return Ok(Response::builder()
+                        .status(StatusCode::INTERNAL_SERVER_ERROR)
+                        .body(Body::empty())
+                        .unwrap());
+                }
+            }
+        }
     };
-    println!("upstream_response: {:?}", upstream_response);
 
-    Ok(upstream_response)
+    // Run the response filter
+    let (mut parts, body) = upstream_response.into_parts();
+    match proxy.inner.response_filter(&mut parts, &mut ctx).await {
+        Ok(()) => {}
+        Err(response) => return Ok(response),
+    }
+
+    Ok(Response::from_parts(parts, body))
 }
 
 #[cfg(feature = "pingora-core")]
