@@ -1,2 +1,3 @@
 [workspace]
-members = ["pingora-server", "yapf"]
+resolver = "2"
+members = ["yapf", "pingora-server"]
