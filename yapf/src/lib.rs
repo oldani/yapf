@@ -8,6 +8,6 @@ pub use proxy_trait::{Proxy, RequestHeaders, ResponseHeaders};
 
 #[cfg(feature = "pingora-core")]
 pub use pingora_core::{
-    server::{configuration::Opt, Server},
-    services::background::background_service,
+    server::{configuration::Opt, Server, ShutdownWatch},
+    services::background::{background_service, BackgroundService},
 };
