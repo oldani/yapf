@@ -39,6 +39,7 @@ impl Backend {
     }
 }
 
+#[derive(Debug)]
 struct Backends {
     health_check: Option<Arc<dyn HealthCheck + Send + Sync + 'static>>,
     backends: Vec<Backend>,
@@ -103,6 +104,7 @@ impl Backends {
     }
 }
 
+#[derive(Debug)]
 pub struct LoadBalancer<T> {
     strategy: T,
     backends: Backends,

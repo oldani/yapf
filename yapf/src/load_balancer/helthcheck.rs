@@ -1,3 +1,4 @@
+use std::fmt::Debug;
 use std::sync::Arc;
 use std::time::Duration;
 
@@ -13,7 +14,7 @@ use super::Backend;
 
 /// [HealthCheck] is the interface to implement health check for backends
 #[async_trait]
-pub trait HealthCheck {
+pub trait HealthCheck: Debug {
     /// Check the given backend.
     ///
     /// `Ok(())`` if the check passes, otherwise the check fails.
@@ -25,6 +26,7 @@ pub trait HealthCheck {
     fn health_threshold(&self, success: bool) -> usize;
 }
 
+#[derive(Debug)]
 pub struct HttpHealthCheck<'a> {
     client: reqwest::Client,
     method: Method,
@@ -102,7 +104,7 @@ impl HealthCheck for HttpHealthCheck<'_> {
     }
 }
 
-#[derive(Clone)]
+#[derive(Clone, Debug)]
 struct HealthInner {
     /// Whether the endpoint is healthy to serve traffic
     healthy: bool,
@@ -116,6 +118,7 @@ struct HealthInner {
     health_counter: usize,
 }
 
+#[derive(Debug)]
 pub struct Health(ArcSwap<HealthInner>);
 
 impl Default for Health {
