@@ -8,6 +8,7 @@ pub trait Strategy {
     fn get_next(&self) -> Option<&Backend>;
 }
 
+#[derive(Debug)]
 pub struct RoundRobin {
     backends: Vec<Backend>,
     current: AtomicUsize,
@@ -31,6 +32,7 @@ impl Strategy for RoundRobin {
     }
 }
 
+#[derive(Debug)]
 pub struct Random {
     backends: Vec<Backend>,
 }
@@ -52,6 +54,7 @@ impl Strategy for Random {
     }
 }
 
+#[derive(Debug)]
 pub struct WeightedRoundRobin {
     backends: Vec<Backend>,
     weighted: Vec<usize>,
@@ -115,6 +118,7 @@ impl Strategy for WeightedRoundRobin {
     }
 }
 
+#[derive(Debug)]
 pub struct WeightedRandom {
     backends: Vec<Backend>,
     weights: WeightedAliasIndex<u16>,
