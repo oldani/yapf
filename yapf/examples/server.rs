@@ -45,7 +45,7 @@ fn main() {
     let mut server = Server::new(Some(opt)).unwrap();
     server.bootstrap();
 
-    let mut proxy = http_proxy_service(MyProxy {});
+    let mut proxy = http_proxy_service("Example", MyProxy {});
     proxy.add_tcp("localhost:3000");
 
     server.add_service(proxy);

@@ -46,7 +46,7 @@ fn main() {
     let lb_service = background_service("Lb health check", lb);
     let lb = lb_service.task();
 
-    let mut proxy = http_proxy_service(MyProxy(lb));
+    let mut proxy = http_proxy_service("Example", MyProxy(lb));
     proxy.add_tcp("localhost:3000");
 
     server.add_service(proxy);

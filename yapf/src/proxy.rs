@@ -113,8 +113,6 @@ where
         strem: Stream,
         _shutdown: &ShutdownWatch,
     ) -> Option<Stream> {
-        // Finally, we bind the incoming connection to our `hello` service
-        // let service = self.clone();
         let on_request = service_fn(move |req| process_request(self.clone(), req));
         if let Err(err) = Http::new()
             .http1_only(true)
@@ -134,19 +132,16 @@ where
 ///
 /// The returned [Service] can be hosted by a [pingora_core::server::Server] directly.
 #[cfg(feature = "pingora-core")]
-pub fn http_proxy_service<P>(inner: P) -> Service<ProxyService<P>>
+pub fn http_proxy_service<P>(name: &str, inner: P) -> Service<ProxyService<P>>
 where
     P: ProxyTrait + Send + Sync + 'static,
     <P as ProxyTrait>::CTX: Send + Sync,
 {
-    Service::new(
-        "Pingora HTTP Proxy Service".into(),
-        ProxyService::new(inner),
-    )
+    Service::new(format!("{} proxy service", name), ProxyService::new(inner))
 }
 
 #[cfg(not(feature = "pingora-core"))]
-pub fn http_proxy_service<P>(_inner: P)
+pub fn http_proxy_service<P>(_name: &str, _inner: P)
 where
     P: ProxyTrait + Send + Sync + 'static,
     <P as ProxyTrait>::CTX: Send + Sync,
