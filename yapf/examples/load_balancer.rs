@@ -1,13 +1,12 @@
-use hyper::header;
 use std::{str::FromStr, sync::Arc};
 
-use hyper::Uri;
-#[cfg(feature = "pingora-core")]
-use yapf::{background_service, http_proxy_service, Opt, Server};
 use yapf::{
+    http::{header, Uri},
     load_balancer::{strategy::RoundRobin, LoadBalancer},
     Proxy, RequestHeaders,
 };
+#[cfg(feature = "pingora-core")]
+use yapf::{http_proxy_service, pingora_services::background::background_service, Opt, Server};
 
 struct MyProxy(Arc<LoadBalancer<RoundRobin>>);
 

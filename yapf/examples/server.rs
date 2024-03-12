@@ -1,9 +1,12 @@
 use hyper::header;
 
-use hyper::{http::StatusCode, Body, Response, Uri};
+use hyper::{Body, Response};
+use yapf::{
+    http::{StatusCode, Uri},
+    Proxy, RequestHeaders,
+};
 #[cfg(feature = "pingora-core")]
 use yapf::{http_proxy_service, Opt, Server};
-use yapf::{Proxy, RequestHeaders};
 
 struct MyProxy {}
 
