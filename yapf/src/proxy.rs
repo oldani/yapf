@@ -2,31 +2,40 @@ use std::convert::Infallible;
 use std::sync::Arc;
 
 use async_trait::async_trait;
+use http_body_util::Either;
+use hyper::body::Incoming as IncomingRequest;
 use hyper::{
-    body::Body, client::Client, http::status::StatusCode, server::conn::Http, service::service_fn,
-    Request, Response,
+    http::status::StatusCode, server::conn::http1, service::service_fn, Request, Response,
 };
 use hyper_rustls::{HttpsConnector, HttpsConnectorBuilder};
+use hyper_util::client::legacy::{connect::HttpConnector, Client};
+
+use hyper_util::rt::{TokioExecutor, TokioIo};
+
 #[cfg(feature = "pingora-core")]
 use pingora_core::{
     apps::ServerApp, protocols::Stream, server::ShutdownWatch, services::listening::Service,
 };
 
 use crate::proxy_trait::Proxy as ProxyTrait;
+use crate::proxy_trait::{empty_body, Body};
 
 pub struct ProxyService<P> {
     inner: P,
-    upstream: Client<HttpsConnector<hyper::client::HttpConnector>>,
+    upstream: Client<HttpsConnector<HttpConnector>, IncomingRequest>,
 }
 
 impl<P> ProxyService<P> {
     fn new(inner: P) -> Arc<Self> {
         let https = HttpsConnectorBuilder::new()
             .with_native_roots()
+            .unwrap()
             .https_or_http()
             .enable_http1()
             .build();
-        let client = Client::builder().build(https);
+
+        // TODO: Add pingora executor
+        let client = Client::builder(TokioExecutor::new()).build(https);
         Arc::new(Self {
             inner,
             upstream: client,
@@ -36,7 +45,7 @@ impl<P> ProxyService<P> {
 
 async fn process_request<P>(
     proxy: Arc<ProxyService<P>>,
-    request: Request<Body>,
+    request: Request<IncomingRequest>,
 ) -> Result<Response<Body>, Infallible>
 where
     P: ProxyTrait + Send + Sync + 'static,
@@ -56,7 +65,7 @@ where
     let Some(upstream_addr) = proxy.inner.upstream_addr(&parts, &mut ctx).await else {
         return Ok(Response::builder()
             .status(StatusCode::SERVICE_UNAVAILABLE)
-            .body(Body::empty())
+            .body(empty_body())
             .unwrap());
     };
     let upstream_addr_clone = upstream_addr.clone();
@@ -84,7 +93,7 @@ where
                 None => {
                     return Ok(Response::builder()
                         .status(StatusCode::INTERNAL_SERVER_ERROR)
-                        .body(Body::empty())
+                        .body(empty_body())
                         .unwrap());
                 }
             }
@@ -98,7 +107,7 @@ where
         Err(response) => return Ok(response),
     }
 
-    Ok(Response::from_parts(parts, body))
+    Ok(Response::from_parts(parts, Either::Right(body)))
 }
 
 #[cfg(feature = "pingora-core")]
@@ -114,11 +123,11 @@ where
         _shutdown: &ShutdownWatch,
     ) -> Option<Stream> {
         let on_request = service_fn(move |req| process_request(self.clone(), req));
-        if let Err(err) = Http::new()
-            .http1_only(true)
-            .http1_keep_alive(true)
-            .http1_preserve_header_case(true)
-            .serve_connection(strem, on_request)
+        let io = TokioIo::new(strem);
+        if let Err(err) = http1::Builder::new()
+            .keep_alive(true)
+            .preserve_header_case(true)
+            .serve_connection(io, on_request)
             .await
         {
             println!("Error serving connection: {:?}", err);

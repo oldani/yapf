@@ -1,12 +1,24 @@
 use async_trait::async_trait;
-use hyper::body::Body;
+use http_body_util::{Either, Empty, Full};
 use hyper::{
+    body::Bytes,
+    body::Incoming,
     http::{request, response},
     Response, Uri,
 };
+pub use hyper_util::client::legacy::Error as UpstreamError;
 
 pub type RequestHeaders = request::Parts;
 pub type ResponseHeaders = response::Parts;
+pub type Body = Either<Either<Empty<Bytes>, Full<Bytes>>, Incoming>;
+
+pub fn empty_body() -> Body {
+    Either::Left(Either::Left(Empty::new()))
+}
+
+pub fn full_body(body: Bytes) -> Body {
+    Either::Left(Either::Right(Full::new(body)))
+}
 
 #[async_trait]
 pub trait Proxy {
@@ -46,7 +58,7 @@ pub trait Proxy {
         // _request: &RequestHeaders,  TODO: Figure how to clone this
         _ctx: &mut Self::CTX,
         _upstream_addr: &Uri,
-        _error: hyper::Error,
+        _error: UpstreamError,
     ) -> Option<Response<Body>> {
         None
     }
