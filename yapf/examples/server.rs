@@ -1,12 +1,12 @@
 use hyper::header;
 
-use hyper::{Body, Response};
+use hyper::Response;
+#[cfg(feature = "pingora-core")]
+use yapf::{empty_body, http_proxy_service, Body, Opt, Server};
 use yapf::{
     http::{StatusCode, Uri},
     Proxy, RequestHeaders,
 };
-#[cfg(feature = "pingora-core")]
-use yapf::{http_proxy_service, Opt, Server};
 
 struct MyProxy {}
 
@@ -25,7 +25,7 @@ impl Proxy for MyProxy {
         if request.uri.path().starts_with("/matic") {
             return Err(Response::builder()
                 .status(StatusCode::FORBIDDEN)
-                .body(Body::empty())
+                .body(empty_body())
                 .unwrap());
         }
 

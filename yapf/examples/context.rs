@@ -1,10 +1,10 @@
 use std::sync::Mutex;
 
 use hyper::header;
-use hyper::{Body, Response, Uri};
+use hyper::{Response, Uri};
 #[cfg(feature = "pingora-core")]
 use yapf::{http_proxy_service, Opt, Server};
-use yapf::{Proxy, RequestHeaders};
+use yapf::{Body, Proxy, RequestHeaders};
 
 struct MyProxy {
     beta_counter: Mutex<usize>, // AtomicUsize works too
