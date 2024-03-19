@@ -63,6 +63,17 @@ pub trait Proxy {
         None
     }
 
+    /// This hook is called when the upstream response is received.
+    /// The `latency` is the time it took to receive the response from the upstream.
+    ///
+    async fn upstream_latency(
+        &self,
+        _upstream_response: &ResponseHeaders,
+        _latency: std::time::Duration,
+        _ctx: &mut Self::CTX,
+    ) {
+    }
+
     /// Modify the response header before it is send to the downstream
     ///
     async fn response_filter(

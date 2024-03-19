@@ -9,8 +9,8 @@ use hyper::{
 };
 use hyper_rustls::{HttpsConnector, HttpsConnectorBuilder};
 use hyper_util::client::legacy::{connect::HttpConnector, Client};
-
 use hyper_util::rt::{TokioExecutor, TokioIo};
+use tokio::time::Instant;
 
 #[cfg(feature = "pingora-core")]
 use pingora_core::{
@@ -82,7 +82,11 @@ where
     let request = Request::from_parts(parts, body);
 
     // Proxy the request to the upstream
-    let upstream_response = match proxy.upstream.request(request).await {
+    let start = Instant::now();
+    let upstream_response = proxy.upstream.request(request).await;
+    let duration = start.elapsed();
+
+    let upstream_response = match upstream_response {
         Ok(upstream_response) => upstream_response,
         Err(err) => {
             match proxy
@@ -100,8 +104,15 @@ where
         }
     };
 
-    // Run the response filter
     let (mut parts, body) = upstream_response.into_parts();
+
+    // Run latency hook
+    proxy
+        .inner
+        .upstream_latency(&parts, duration, &mut ctx)
+        .await;
+
+    // Run the response filter
     match proxy.inner.response_filter(&mut parts, &mut ctx).await {
         Ok(()) => {}
         Err(response) => return Ok(response),
