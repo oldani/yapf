@@ -20,7 +20,7 @@ num-integer = "0.1.46"
 rand_distr = "0.4.3"
 anyhow = "1.0.40"
 reqwest = { version = "0.11.3", features = ["default-tls", "trust-dns"] }
-tokio = { version = "1.0.1", features = ["full"] }
+tokio = { version = "1.0.1", features = ["sync", "time"] }
 arc-swap = "1.7.0"
 pingora-server = { path = "../pingora-server", optional = true }
 pingora-core = { version = "0.1.0", optional = true }
