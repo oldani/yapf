@@ -60,8 +60,8 @@ impl Backends {
         }
     }
 
-    fn set_health_check(&mut self, health_check: Box<dyn HealthCheck + Send + Sync + 'static>) {
-        self.health_check = Some(health_check.into());
+    fn set_health_check(&mut self, health_check: Arc<dyn HealthCheck + Send + Sync + 'static>) {
+        self.health_check = Some(health_check);
     }
 
     async fn run_health_check(&self) {
@@ -132,7 +132,7 @@ impl<T: Strategy> LoadBalancer<T> {
         Ok(Self::new(new_backends?))
     }
 
-    pub fn set_health_check(&mut self, health_check: Box<dyn HealthCheck + Send + Sync + 'static>) {
+    pub fn set_health_check(&mut self, health_check: Arc<dyn HealthCheck + Send + Sync + 'static>) {
         self.backends.set_health_check(health_check);
     }
 
@@ -196,7 +196,7 @@ mod tests {
             );
 
             let mut backends = Backends::new(vec![backend1.clone(), backend2.clone()]);
-            backends.set_health_check(Box::new(health_checker));
+            backends.set_health_check(Arc::new(health_checker));
             backends
         };
 
@@ -251,7 +251,7 @@ mod tests {
         let mut lb: LoadBalancer<RoundRobin> =
             LoadBalancer::new(vec![backend1.clone(), backend2.clone()]);
         let health_checker = HttpHealthCheck::new();
-        lb.set_health_check(Box::new(health_checker));
+        lb.set_health_check(Arc::new(health_checker));
 
         // Backends are healthy by default since we haven't run health check yet
         assert_eq!(lb.next().unwrap(), &backend1);

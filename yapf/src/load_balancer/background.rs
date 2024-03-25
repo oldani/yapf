@@ -169,7 +169,7 @@ mod tests {
             let mut lb: LoadBalancer<RoundRobin> =
                 LoadBalancer::new(vec![backend1.clone(), backend2.clone()]);
 
-            lb.set_health_check(Box::new(HttpHealthCheck::new()));
+            lb.set_health_check(Arc::new(HttpHealthCheck::new()));
             lb.health_check_interval = Some(Duration::from_secs(2));
             lb
         };
