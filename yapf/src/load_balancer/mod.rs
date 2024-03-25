@@ -32,6 +32,10 @@ impl Backend {
         self
     }
 
+    pub fn set_weight(&mut self, weight: u16) {
+        self.weight = weight;
+    }
+
     pub fn hash_key(&self) -> u64 {
         let mut hasher = DefaultHasher::new();
         self.hash(&mut hasher);
@@ -165,6 +169,27 @@ mod tests {
     use strategy::RoundRobin;
     use wiremock::matchers::{method, path};
     use wiremock::{Mock, MockServer, ResponseTemplate};
+
+    #[test]
+    fn test_backend_hash_key() {
+        let backend1 = Backend::new("http://localhost:8080".to_string());
+        let backend2 = Backend::new("http://localhost:8080".to_string());
+        assert_eq!(backend1.hash_key(), backend2.hash_key());
+
+        let backend1 = Backend::new("http://localhost:8081".to_string());
+        let backend2 = Backend::new("http://localhost:8081".to_string());
+        assert_eq!(backend1.hash_key(), backend2.hash_key());
+
+        let backend1 = Backend::new("http://localhost:8081".to_string());
+        let backend2 = Backend::new("http://localhost:8082".to_string());
+        assert_ne!(backend1.hash_key(), backend2.hash_key());
+
+        let mut backend1 = Backend::new("http://localhost:8081".to_string());
+        backend1.set_weight(50);
+        let mut backend2 = Backend::new("http://localhost:8081".to_string());
+        backend2.set_weight(150);
+        assert_ne!(backend1.hash_key(), backend2.hash_key());
+    }
 
     #[test]
     fn test_lb_round_robin() {
