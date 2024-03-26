@@ -112,7 +112,7 @@ impl Backends {
 pub struct LoadBalancer<T> {
     strategy: T,
     backends: Backends,
-    health_check_interval: Option<Duration>,
+    pub health_check_interval: Option<Duration>,
 }
 
 impl<T: Strategy> LoadBalancer<T> {
