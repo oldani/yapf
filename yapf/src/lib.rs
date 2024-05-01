@@ -12,3 +12,9 @@ pub use pingora_core::{
     server::{configuration::Opt, Server, ShutdownWatch},
     services as pingora_services,
 };
+
+#[cfg(not(feature = "pingora-core"))]
+pub use pingora_server::{
+    server::{configuration::Opt, Server, ShutdownWatch},
+    services::background::{background_service, BackgroundService},
+};
