@@ -26,7 +26,6 @@ use async_trait::async_trait;
 use crate::server::{ListenFds, ShutdownWatch};
 
 pub mod background;
-// pub mod listening;
 
 /// The service interface
 #[async_trait]
