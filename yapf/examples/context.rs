@@ -70,7 +70,7 @@ fn main() {
     server.run_forever();
 }
 
-#[cfg(not(feature = "pingora-core"))]
+#[cfg(feature = "pingora")]
 fn main() {
     println!("This example requires the `pingora-core` feature");
 }

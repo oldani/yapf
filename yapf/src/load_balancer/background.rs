@@ -1,8 +1,8 @@
-#[cfg(not(feature = "pingora-core"))]
-use crate::services::BackgroundService;
 use async_trait::async_trait;
 #[cfg(feature = "pingora-core")]
 use pingora_core::{server::ShutdownWatch, services::background::BackgroundService};
+#[cfg(feature = "pingora")]
+use pingora_server::services::background::BackgroundService;
 use tokio::sync::watch;
 use tokio::time::{self, Duration, Instant};
 
@@ -37,7 +37,7 @@ impl<T: Strategy + Send + Sync + 'static> BackgroundService for LoadBalancer<T> 
     }
 }
 
-#[cfg(not(feature = "pingora-core"))]
+#[cfg(feature = "pingora")]
 #[async_trait]
 impl<T: Strategy + Send + Sync + 'static> BackgroundService for LoadBalancer<T> {
     async fn start(&self, shutdown: watch::Receiver<bool>) {
@@ -140,7 +140,7 @@ mod tests {
         assert_eq!(lb.next().unwrap(), &backend1);
     }
 
-    #[cfg(not(feature = "pingora-core"))]
+    #[cfg(feature = "pingora")]
     #[tokio::test]
     async fn test_load_balancer_background_service() {
         use std::sync::Arc;

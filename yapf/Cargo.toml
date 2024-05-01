@@ -34,3 +34,4 @@ wiremock = "0.6.0"
 [features]
 pingora = ["dep:pingora-server"]
 pingora-core = ["dep:pingora-core"]
+default = ["pingora"]

@@ -1,12 +1,13 @@
 use hyper::header;
 
 use hyper::Response;
-#[cfg(feature = "pingora-core")]
-use yapf::{empty_body, http_proxy_service, Body, Opt, Server};
 use yapf::{
+    empty_body,
     http::{StatusCode, Uri},
-    Proxy, RequestHeaders,
+    Body, Proxy, RequestHeaders,
 };
+#[cfg(feature = "pingora-core")]
+use yapf::{http_proxy_service, Opt, Server};
 
 struct MyProxy {}
 
@@ -55,7 +56,7 @@ fn main() {
     server.run_forever();
 }
 
-#[cfg(not(feature = "pingora-core"))]
+#[cfg(feature = "pingora")]
 fn main() {
     println!("This example requires the pingora-core feature to be enabled");
 }

@@ -160,7 +160,7 @@ where
     Service::new(format!("{} proxy service", name), ProxyService::new(inner))
 }
 
-#[cfg(not(feature = "pingora-core"))]
+#[cfg(feature = "pingora")]
 pub fn http_proxy_service<P>(_name: &str, _inner: P)
 where
     P: ProxyTrait + Send + Sync + 'static,
