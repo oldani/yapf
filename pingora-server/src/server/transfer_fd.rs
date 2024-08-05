@@ -51,24 +51,13 @@ impl Fds {
     }
 
     pub fn serialize(&self) -> (Vec<String>, Vec<RawFd>) {
-        let serialized: Vec<(String, RawFd)> = self
-            .map
-            .iter()
-            .map(|(key, value)| (key.clone(), *value))
-            .collect();
-
-        (
-            serialized.iter().map(|v| v.0.clone()).collect(),
-            serialized.iter().map(|v| v.1).collect(),
-        )
-        // Surely there is a better way of doing this
+        self.map.iter().map(|(key, val)| (key.clone(), val)).unzip()
     }
 
     pub fn deserialize(&mut self, binds: Vec<String>, fds: Vec<RawFd>) {
-        assert!(binds.len() == fds.len());
-        // TODO: use zip()
-        for i in 0..binds.len() {
-            self.map.insert(binds[i].clone(), fds[i]);
+        assert_eq!(binds.len(), fds.len());
+        for (bind, fd) in binds.into_iter().zip(fds) {
+            self.map.insert(bind, fd);
         }
     }
 
@@ -88,7 +77,7 @@ impl Fds {
     {
         let mut de_buf: [u8; 2048] = [0; 2048];
         let (fds, bytes) = get_fds_from(path, &mut de_buf)?;
-        let keys = deserialize_vec_string(&de_buf[..bytes]);
+        let keys = deserialize_vec_string(&de_buf[..bytes])?;
         self.deserialize(keys, fds);
         Ok(())
     }
@@ -102,13 +91,9 @@ fn serialize_vec_string(vec_string: &[String], mut buf: &mut [u8]) -> usize {
     buf.write(joined.as_bytes()).unwrap()
 }
 
-fn deserialize_vec_string(buf: &[u8]) -> Vec<String> {
-    let joined = std::str::from_utf8(buf).unwrap(); // TODO: handle error
-    let mut results: Vec<String> = Vec::new();
-    for iter in joined.split_ascii_whitespace() {
-        results.push(String::from(iter));
-    }
-    results
+fn deserialize_vec_string(buf: &[u8]) -> Result<Vec<String>, Error> {
+    let joined = std::str::from_utf8(buf).map_err(|_| Error::EINVAL)?;
+    Ok(joined.split_ascii_whitespace().map(String::from).collect())
 }
 
 #[cfg(target_os = "linux")]
@@ -380,7 +365,7 @@ mod tests {
         let vec_str: Vec<String> = vec!["aaaa".to_string(), "bbb".to_string()];
         let mut ser_buf: [u8; 1024] = [0; 1024];
         let size = serialize_vec_string(&vec_str, &mut ser_buf);
-        let de_vec_string = deserialize_vec_string(&ser_buf[..size]);
+        let de_vec_string = deserialize_vec_string(&ser_buf[..size]).unwrap();
         assert_eq!(de_vec_string.len(), 2);
         assert_eq!(de_vec_string[0], "aaaa");
         assert_eq!(de_vec_string[1], "bbb");
